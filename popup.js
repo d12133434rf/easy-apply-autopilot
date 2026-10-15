@@ -93,6 +93,59 @@ $('saveProfile').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Documents (resume / cover letter files)
+// ---------------------------------------------------------------------------
+const MAX_DOC_BYTES = 2 * 1024 * 1024;
+
+function readAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderDocuments() {
+  const { documents = {} } = await chrome.storage.local.get('documents');
+  document.querySelectorAll('.doc').forEach((box) => {
+    const doc = documents[box.dataset.doc];
+    const info = box.querySelector('.docinfo');
+    info.replaceChildren(...(doc ? [
+      el('span', { text: `✓ ${doc.name} (${Math.ceil(doc.size / 1024)} KB)` }),
+      el('button', {
+        class: 'btn danger', type: 'button', text: 'Remove',
+        onclick: async () => {
+          const { documents: current = {} } = await chrome.storage.local.get('documents');
+          delete current[box.dataset.doc];
+          await chrome.storage.local.set({ documents: current });
+          renderDocuments();
+        },
+      }),
+    ] : []));
+  });
+}
+
+document.querySelectorAll('.doc input[type=file]').forEach((input) => {
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > MAX_DOC_BYTES) {
+      input.value = '';
+      return flash('profileMsg', `${file.name} is over 2 MB.`, true);
+    }
+    const { documents = {} } = await chrome.storage.local.get('documents');
+    documents[input.closest('.doc').dataset.doc] = {
+      name: file.name, type: file.type || 'application/octet-stream', size: file.size, data: await readAsBase64(file),
+    };
+    await chrome.storage.local.set({ documents });
+    input.value = '';
+    renderDocuments();
+    flash('profileMsg', `${file.name} saved`);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Answer bank
 // ---------------------------------------------------------------------------
 let answers = {};
@@ -114,6 +167,18 @@ function renderAnswers() {
   $('pendingCount').textContent = pendingEntries.length;
 
   $('pendingList').replaceChildren(...(pendingEntries.length ? pendingEntries.map(([key, q]) => {
+    const dismiss = async () => {
+      delete pending[key];
+      await chrome.storage.local.set({ pendingQuestions: pending });
+      renderAnswers();
+    };
+    if (q.kind === 'file') {
+      return el('div', { class: 'card' }, [
+        el('div', { class: 'q', text: q.label }),
+        el('div', { class: 'meta', text: [q.job, 'Add the file under Profile → Documents'].filter(Boolean).join(' · ') }),
+        el('button', { class: 'btn danger', text: 'Dismiss', onclick: dismiss }),
+      ]);
+    }
     const input = answerInput(q.options);
     const save = async () => {
       if (!input.value.trim()) return;
@@ -121,11 +186,6 @@ function renderAnswers() {
       delete pending[key];
       await chrome.storage.local.set({ pendingQuestions: pending });
       await send({ type: 'SAVE_ANSWERS', answers });
-      renderAnswers();
-    };
-    const dismiss = async () => {
-      delete pending[key];
-      await chrome.storage.local.set({ pendingQuestions: pending });
       renderAnswers();
     };
     return el('div', { class: 'card' }, [
@@ -223,6 +283,7 @@ async function loadAll() {
   $('skills').value = skillsToText(profile.skills);
   $('workHistory').replaceChildren();
   (profile.work_history || []).forEach(addWorkRow);
+  renderDocuments();
 
   answers = d.answers || {};
   pending = d.pendingQuestions || {};

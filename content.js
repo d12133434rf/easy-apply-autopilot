@@ -25,7 +25,14 @@
       followCompany: 'input#follow-company-checkbox, input[id*="follow-company"]',
       nextPage: 'button[aria-label="View next page"], button.jobs-search-pagination__button--next',
       typeaheadOption: '[role="listbox"] [role="option"]',
+      // A resume LinkedIn already has on file and has selected for this application.
+      selectedDocument: '.jobs-document-upload-redesign-card__container--selected, [class*="document"][aria-checked="true"], [class*="document"] input[type="radio"]:checked',
     },
+    // File inputs: matched against label + id + name. First match wins.
+    fileRules: [
+      { match: /cover.?letter/i, doc: 'coverLetter' },
+      { match: /resume|\bcv\b/i, doc: 'resume' },
+    ],
     // Matched against a button's aria-label + visible text.
     buttons: {
       submit: /submit application/i,
@@ -244,7 +251,16 @@
     const questions = [];
     const groups = new Map();
     for (const el of root.querySelectorAll('input, select, textarea')) {
-      if (el.disabled || ['hidden', 'file', 'submit', 'button', 'search', 'image', 'reset'].includes(el.type)) continue;
+      if (el.type === 'file') {
+        // Upload inputs are usually visually hidden behind an "Upload" button.
+        if (el.disabled) continue;
+        const label = labelFor(el);
+        const haystack = `${label} ${el.id} ${el.name} ${el.getAttribute('aria-label') || ''}`;
+        const doc = CONFIG.fileRules.find((r) => r.match.test(haystack))?.doc || null;
+        questions.push({ kind: 'file', label: label || doc || 'File upload', el, doc, container: el.closest(CONFIG.selectors.formElement) || el.parentElement });
+        continue;
+      }
+      if (el.disabled || ['hidden', 'submit', 'button', 'search', 'image', 'reset'].includes(el.type)) continue;
       if (el.matches(CONFIG.selectors.followCompany)) continue;
       if (!controlShown(el)) continue;
 
@@ -265,7 +281,7 @@
         : 'text';
       questions.push({ kind, label: labelFor(el), el, container: el.closest(CONFIG.selectors.formElement) || el.parentElement });
     }
-    for (const q of questions) q.required = isRequired(q);
+    for (const q of questions) q.required = isRequired(q) || q.doc === 'resume';
     return questions;
   }
 
@@ -278,6 +294,9 @@
 
   function isAnswered(q) {
     switch (q.kind) {
+      case 'file':
+        return q.el.files.length > 0
+          || (q.doc === 'resume' && !!(getModal() || document).querySelector(CONFIG.selectors.selectedDocument));
       case 'text':
       case 'textarea':
         return q.el.value.trim() !== '';
@@ -336,7 +355,25 @@
       || null;
   }
 
+  // Attach a file saved in the popup (Profile → Documents) to an upload input.
+  async function uploadDocument(q) {
+    if (!q.doc) return false;
+    const { documents = {} } = await chrome.storage.local.get('documents');
+    const doc = documents[q.doc];
+    if (!doc) return false;
+    const bytes = Uint8Array.from(atob(doc.data), (c) => c.charCodeAt(0));
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], doc.name, { type: doc.type }));
+    q.el.files = transfer.files;
+    q.el.dispatchEvent(new Event('input', { bubbles: true }));
+    q.el.dispatchEvent(new Event('change', { bubbles: true }));
+    // LinkedIn shows the file name once the upload finishes.
+    await waitFor(() => (getModal()?.innerText || '').includes(doc.name), 15000);
+    return true;
+  }
+
   async function fillQuestion(q) {
+    if (q.kind === 'file') return uploadDocument(q);
     const answer = resolveAnswer(q);
     if (answer == null) return false;
 

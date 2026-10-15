@@ -25,7 +25,7 @@ window.__submissions = [];
 const JOBS = [
   { id: '101', title: 'Frontend Engineer', company: 'Acme', easy: true },
   { id: '102', title: 'Data Analyst', company: 'Globex', easy: false },
-  { id: '103', title: 'Backend Engineer', company: 'Initech', easy: true, extra: true },
+  { id: '103', title: 'Backend Engineer', company: 'Initech', easy: true, extra: true, hasResume: true },
   { id: '104', title: 'Designer', company: 'Umbrella', easy: true, applied: true },
 ];
 
@@ -57,13 +57,14 @@ function RadioField({ id, label, value, onChange, options, error }) {
 
 const STEPS = (job) => [
   ['firstName', 'lastName', 'email', 'phoneCountry', 'phone'],
+  job.hasResume ? [] : ['resume'],
   ['python', 'authorized', 'sponsorship', ...(job.extra ? ['weekends'] : [])],
   [],
 ];
 
 function Modal({ job, onClose, onSubmit }) {
   const [step, setStep] = useState(0);
-  const [v, setV] = useState({ firstName: '', lastName: '', email: '', phoneCountry: '', phone: '', python: '', authorized: '', sponsorship: '', weekends: '' });
+  const [v, setV] = useState({ firstName: '', lastName: '', email: '', phoneCountry: '', phone: '', python: '', authorized: '', sponsorship: '', weekends: '', resume: '', coverLetter: '' });
   const [follow, setFollow] = useState(true);
   const [errors, setErrors] = useState({});
   const set = k => val => setV(s => ({ ...s, [k]: val }));
@@ -84,6 +85,18 @@ function Modal({ job, onClose, onSubmit }) {
     h(TextField, { key: 5, id: 'ph', label: 'Mobile phone number', value: v.phone, onChange: set('phone'), error: errors.phone }),
   ];
   else if (step === 1) body = [
+    job.hasResume && h('div', { key: 0, className: 'jobs-document-upload-redesign-card__container jobs-document-upload-redesign-card__container--selected' }, 'Existing_Resume.pdf'),
+    h('div', { key: 1, className: 'jobs-document-upload' },
+      h('label', { htmlFor: 'up-resume' }, 'Upload resume'),
+      h('input', { id: 'up-resume', type: 'file', style: { display: 'none' }, onChange: e => set('resume')(e.target.files[0]?.name || '') }),
+      v.resume && h('div', null, v.resume),
+      errors.resume && h('div', { className: 'artdeco-inline-feedback--error' }, 'A resume is required')),
+    h('div', { key: 2, className: 'jobs-document-upload' },
+      h('label', { htmlFor: 'up-cl' }, 'Upload cover letter'),
+      h('input', { id: 'up-cl', type: 'file', style: { display: 'none' }, onChange: e => set('coverLetter')(e.target.files[0]?.name || '') }),
+      v.coverLetter && h('div', null, v.coverLetter)),
+  ];
+  else if (step === 2) body = [
     h(TextField, { key: 1, id: 'py', label: 'How many years of work experience do you have with Python?', value: v.python, onChange: set('python'), error: errors.python }),
     h(RadioField, { key: 2, id: 'auth', label: 'Are you legally authorized to work in the United States?', value: v.authorized, onChange: set('authorized'), options: ['Yes', 'No'], error: errors.authorized }),
     h(SelectField, { key: 3, id: 'sp', label: 'Will you now or in the future require sponsorship for employment visa status?', value: v.sponsorship, onChange: set('sponsorship'), options: ['Yes', 'No'], error: errors.sponsorship }),
@@ -93,13 +106,13 @@ function Modal({ job, onClose, onSubmit }) {
     h('p', { key: 1 }, 'Review your application'),
     h('div', { key: 2 }, h('input', { type: 'checkbox', id: 'follow-company-checkbox', checked: follow, onChange: e => setFollow(e.target.checked) }), h('label', { htmlFor: 'follow-company-checkbox' }, 'Follow ' + job.company)),
   ];
-  const pct = [0, 50, 100][step];
+  const pct = [0, 33, 66, 100][step];
   return h('div', { className: 'artdeco-modal jobs-easy-apply-modal', role: 'dialog', 'data-test-modal': '' },
     h('div', { className: 'artdeco-modal__header' }, h('h2', null, 'Apply to ' + job.company), h('button', { 'aria-label': 'Dismiss', onClick: onClose }, 'X')),
     h('div', null, pct + '%'),
     ...body,
-    step < 2
-      ? h('button', { 'aria-label': step === 1 ? 'Review your application' : 'Continue to next step', onClick: validateAndGo }, step === 1 ? 'Review' : 'Next')
+    step < 3
+      ? h('button', { 'aria-label': step === 2 ? 'Review your application' : 'Continue to next step', onClick: validateAndGo }, step === 2 ? 'Review' : 'Next')
       : h('button', { 'aria-label': 'Submit application', onClick: () => onSubmit({ ...v, follow }) }, 'Submit application'));
 }
 

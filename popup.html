@@ -31,6 +31,7 @@
     .card .meta { color: #888; font-size: 11px; margin-bottom: 4px; }
     .card .line { display: flex; gap: 6px; align-items: center; } .card .line input, .card .line select { margin: 0; }
     .wh { border: 1px solid #e3e3e8; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+    .doc { margin-bottom: 8px; } .docinfo { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #067647; }
     .warn { background: #fff4d6; color: #7a5600; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-bottom: 10px; }
   </style>
 </head>
@@ -81,6 +82,17 @@
       <textarea id="skills" placeholder="Python: 5&#10;React: 3&#10;SQL: 4"></textarea>
     </label>
     <label>Cover letter<textarea id="cover_letter" rows="4"></textarea></label>
+
+    <h3>Documents</h3>
+    <p class="hint">Uploaded when a job asks for them. PDF, DOC or DOCX, up to 2 MB (LinkedIn's limit). Stored only in this browser.</p>
+    <div class="doc" data-doc="resume">
+      <label>Resume<input type="file" accept=".pdf,.doc,.docx"></label>
+      <div class="docinfo"></div>
+    </div>
+    <div class="doc" data-doc="coverLetter">
+      <label>Cover letter<input type="file" accept=".pdf,.doc,.docx"></label>
+      <div class="docinfo"></div>
+    </div>
 
     <h3>Work history</h3>
     <div id="workHistory"></div>

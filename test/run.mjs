@@ -35,6 +35,10 @@ await storage(() => chrome.storage.local.set({
     phone_country: 'United States (+1)', work_authorized: 'Yes', requires_sponsorship: 'No',
     years_experience: 6, skills: { Python: 5 },
   },
+  documents: {
+    resume: { name: 'Jane_Doe_Resume.pdf', type: 'application/pdf', size: 9, data: btoa('%PDF-1.4\n') },
+    coverLetter: { name: 'Jane_Doe_Cover.pdf', type: 'application/pdf', size: 9, data: btoa('%PDF-1.4\n') },
+  },
   settings: { dryRun: false, dailyCap: 25, delaySeconds: 1, followCompany: false, defaultSkillYears: '' },
 }));
 
@@ -68,6 +72,7 @@ assert(s.phoneCountry === 'United States (+1)' && s.phone === '5551234567', 'pho
 assert(s.python === '5', 'skill years from profile.skills');
 assert(s.authorized === 'Yes' && s.sponsorship === 'No', 'radio + select screening answers');
 assert(s.follow === false, 'follow-company unchecked');
+assert(s.resume === 'Jane_Doe_Resume.pdf' && s.coverLetter === 'Jane_Doe_Cover.pdf', 'resume + cover letter files uploaded');
 
 let st = await storage(() => chrome.storage.local.get(['pendingQuestions', 'applications', 'stats']));
 const pendingKeys = Object.keys(st.pendingQuestions || {});
@@ -83,6 +88,7 @@ await storage((k) => chrome.storage.local.set({ answers: { [k]: { label: 'Are yo
 r = await runUntilStopped();
 console.log('run 2:', r.status, '|', r.counts);
 assert(r.subs.length === 1 && r.subs[0].job === '103' && r.subs[0].weekends === 'Yes', 'job 103 submitted using answer bank; 101 not re-applied');
+assert(r.subs[0]?.resume === '' && r.subs[0]?.coverLetter === 'Jane_Doe_Cover.pdf', 'existing LinkedIn resume kept (no duplicate upload)');
 
 // --- Run 3: dry run never submits
 await storage(() => chrome.storage.local.set({ applications: [], settings: { dryRun: true, dailyCap: 25, delaySeconds: 1, followCompany: false, defaultSkillYears: '' } }));
@@ -98,7 +104,7 @@ await page.locator('#easy-apply-autopilot-fill').click({ timeout: 5000 });
 await page.waitForFunction(() => /Filled/.test(document.getElementById('easy-apply-autopilot-fill')?.textContent));
 console.log('button:', await page.locator('#easy-apply-autopilot-fill').textContent());
 await page.locator('button[aria-label="Continue to next step"]').click();
-const py = await page.waitForFunction(() => document.getElementById('py')?.value === '5', null, { timeout: 5000 }).then(() => true, () => false);
-assert(py, 'manual mode re-fills the next step automatically');
+const up = await page.waitForFunction(() => document.querySelector('.jobs-easy-apply-modal')?.innerText.includes('Jane_Doe_Resume.pdf'), null, { timeout: 8000 }).then(() => true, () => false);
+assert(up, 'manual mode fills the next step (resume upload) automatically');
 
 await ctx.close();

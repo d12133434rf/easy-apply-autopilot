@@ -42,7 +42,13 @@ Manual mode: open any Easy Apply modal yourself and click **⚡ Autofill**. It f
 2. **Skill years**: "How many years of experience with X?" → `skills` in your profile (`Python: 5`). Unknown skills use "Default years" if you set it; otherwise the question is asked.
 3. **Profile rules** (`CONFIG.fieldRules`): name, email, phone, location, work authorization, sponsorship, salary, education, and so on.
 
-Fields LinkedIn pre-fills (contact info, resume) are left alone. Resume upload is not handled.
+Fields LinkedIn pre-fills (contact info) are left alone.
+
+## Resume and cover letter
+
+Add them under **Profile → Documents** in the popup (PDF, DOC or DOCX, up to 2 MB). They're stored only in this browser.
+- **Resume:** if LinkedIn already has one of your resumes selected, it's kept. Otherwise yours is uploaded. If a job requires a resume and you haven't added one, the job is skipped and flagged in the Answers tab.
+- **Cover letter:** uploaded whenever the job has a cover-letter upload field. If a job asks for a typed cover letter instead, the text from your profile is used.
 
 ## When LinkedIn changes its UI
 
