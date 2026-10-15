@@ -18,7 +18,9 @@ Chrome extension (Manifest V3) that applies to LinkedIn Easy Apply jobs automati
 4. **It never guesses.** If a required question has no answer, it discards that application and puts the question under **Answers** in the popup. Answer it once and it's reused from then on.
 5. It stops when you click Stop, when it hits your daily cap, when the results run out, or when LinkedIn shows its own daily Easy Apply limit.
 
-Manual mode: open any Easy Apply modal yourself and click **⚡ Autofill**. It fills the current step and keeps filling each new step until the modal closes.
+Manual mode: open any Easy Apply modal yourself and click **⚡ Autofill**. It fills the current step and keeps filling each new step until the modal closes. Applications you submit yourself are logged to the tracker too.
+
+Open the tracker from the popup (**Tracker ↗**) or the on-page panel (**Open tracker**).
 
 ## Files
 
@@ -27,7 +29,8 @@ Manual mode: open any Easy Apply modal yourself and click **⚡ Autofill**. It f
 | `manifest.json` | MV3 manifest |
 | `content.js` | Modal detection, form filling, auto-apply loop, on-page panel. **All LinkedIn selectors and text patterns are in the `CONFIG` block at the top.** |
 | `background.js` | Supabase auth, profile/answer sync, application logging, free-tier gating |
-| `popup.html/js` | Profile, answer bank, settings, account |
+| `popup.html/js` | Profile, documents, answer bank, settings, account. Everything saves as you type. "Full page ↗" opens it in a tab |
+| `dashboard.html/js` | Application tracker: stats, search, status updates, CSV export (free plan shows the 10 most recent) |
 | `supabase/migrations/0001_init.sql` | Schema, RLS, signup trigger, tracker limit enforced in the database |
 | `test/` | End-to-end test: a mock LinkedIn page built with React (controlled inputs) |
 
@@ -51,6 +54,8 @@ Add them under **Profile → Documents** in the popup (PDF, DOC or DOCX, up to 2
 - **Cover letter:** uploaded whenever the job has a cover-letter upload field. If a job asks for a typed cover letter instead, the text from your profile is used.
 
 ## When LinkedIn changes its UI
+
+Click **Copy debug info** in the on-page panel. It copies a summary of the page structure (selector match counts, job-link and button markup, dialog fields; no field values) to paste into a bug report or to Claude.
 
 Edit `CONFIG` in `content.js`. Fields are matched by **label text** rather than generated IDs, so most changes only affect `CONFIG.selectors` (modal, job cards, buttons). Run `cd test && npm install && npm test` to check the logic still works. The mock page only reflects LinkedIn's DOM as of this writing, so also verify on the real site in dry-run mode.
 

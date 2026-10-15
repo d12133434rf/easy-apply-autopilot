@@ -32,6 +32,14 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+// Chrome closes the popup as soon as you click outside it, so every field saves
+// as you type. Opened as a full tab (?tab=1) for file uploads and more room.
+const IS_TAB = new URLSearchParams(location.search).has('tab');
+if (IS_TAB) document.body.classList.add('tab');
+const openTab = (page, hash = '') => chrome.tabs.create({ url: chrome.runtime.getURL(page) + hash });
+$('openTracker').addEventListener('click', () => openTab('dashboard.html'));
+$('openFull').addEventListener('click', () => openTab('popup.html?tab=1'));
+
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
@@ -65,7 +73,7 @@ function addWorkRow(job = {}) {
   const row = el('div', { class: 'wh' }, [
     el('div', { class: 'row' }, [field('title', 'Title'), field('company', 'Company')]),
     el('div', { class: 'row' }, [field('start', 'Start', '2021-03'), field('end', 'End', 'Present')]),
-    el('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: () => row.remove() }),
+    el('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: () => { row.remove(); saveProfile(); } }),
   ]);
   $('workHistory').append(row);
 }
@@ -80,17 +88,19 @@ function readWorkHistory() {
 
 $('addJob').addEventListener('click', () => addWorkRow());
 
-$('saveProfile').addEventListener('click', async () => {
+async function saveProfile() {
   const profile = {};
   for (const f of PROFILE_FIELDS) profile[f] = $(f).value.trim();
   profile.skills = textToSkills($('skills').value);
   profile.work_history = readWorkHistory();
-  if (!profile.first_name || !profile.last_name || !profile.email) {
-    return flash('profileMsg', 'First name, last name and email are required.', true);
-  }
-  const res = await send({ type: 'SAVE_PROFILE', profile });
-  res?.ok ? flash('profileMsg', 'Saved') : flash('profileMsg', res?.error || 'Save failed', true);
-});
+  await chrome.storage.local.set({ profile }); // background.js syncs to Supabase
+  if (!profile.first_name) flash('profileMsg', 'Saved. Add your first name so auto-apply can start.', true);
+  else flash('profileMsg', 'Saved');
+}
+
+$('saveProfile').addEventListener('click', saveProfile);
+$('profile').addEventListener('input', (e) => { if (e.target.type !== 'file') saveProfile(); });
+$('profile').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') saveProfile(); });
 
 // ---------------------------------------------------------------------------
 // Documents (resume / cover letter files)
@@ -127,6 +137,12 @@ async function renderDocuments() {
 }
 
 document.querySelectorAll('.doc input[type=file]').forEach((input) => {
+  // The file picker steals focus and closes the popup, so pick files in a full tab.
+  input.addEventListener('click', (e) => {
+    if (IS_TAB) return;
+    e.preventDefault();
+    openTab('popup.html?tab=1');
+  });
   input.addEventListener('change', async () => {
     const file = input.files[0];
     if (!file) return;
@@ -161,6 +177,10 @@ function answerInput(options, value = '') {
   return el('input', { value, placeholder: 'Your answer' });
 }
 
+async function persistAnswers() {
+  await chrome.storage.local.set({ answers, pendingQuestions: pending }); // background.js syncs to Supabase
+}
+
 function renderAnswers() {
   const pendingEntries = Object.entries(pending);
   $('pendingCount').hidden = pendingEntries.length === 0;
@@ -169,7 +189,7 @@ function renderAnswers() {
   $('pendingList').replaceChildren(...(pendingEntries.length ? pendingEntries.map(([key, q]) => {
     const dismiss = async () => {
       delete pending[key];
-      await chrome.storage.local.set({ pendingQuestions: pending });
+      await persistAnswers();
       renderAnswers();
     };
     if (q.kind === 'file') {
@@ -180,12 +200,22 @@ function renderAnswers() {
       ]);
     }
     const input = answerInput(q.options);
+    // Save while typing (without re-rendering, so focus stays put); the
+    // Save button also moves it to "Saved answers".
+    const store = async () => {
+      const value = input.value.trim();
+      if (value) answers[key] = { label: q.label, answer: value, options: q.options || [] };
+      else delete answers[key];
+      await persistAnswers();
+    };
+    input.addEventListener('input', store);
+    input.addEventListener('change', store);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
     const save = async () => {
       if (!input.value.trim()) return;
-      answers[key] = { label: q.label, answer: input.value.trim(), options: q.options || [] };
+      await store();
       delete pending[key];
-      await chrome.storage.local.set({ pendingQuestions: pending });
-      await send({ type: 'SAVE_ANSWERS', answers });
+      await persistAnswers();
       renderAnswers();
     };
     return el('div', { class: 'card' }, [
@@ -202,10 +232,12 @@ function renderAnswers() {
   const saved = Object.entries(answers);
   $('answerList').replaceChildren(...(saved.length ? saved.map(([key, a]) => {
     const input = answerInput(a.options, a.answer);
-    input.addEventListener('change', async () => {
+    const store = async () => {
       answers[key].answer = input.value.trim();
-      await send({ type: 'SAVE_ANSWERS', answers });
-    });
+      await persistAnswers();
+    };
+    input.addEventListener('input', store);
+    input.addEventListener('change', store);
     return el('div', { class: 'card' }, [
       el('div', { class: 'q', text: a.label }),
       el('div', { class: 'line' }, [
@@ -214,7 +246,7 @@ function renderAnswers() {
           class: 'btn danger', text: '✕', title: 'Delete',
           onclick: async () => {
             delete answers[key];
-            await send({ type: 'SAVE_ANSWERS', answers });
+            await persistAnswers();
             renderAnswers();
           },
         }),
@@ -226,7 +258,7 @@ function renderAnswers() {
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
-$('saveSettings').addEventListener('click', async () => {
+async function saveSettings() {
   const settings = {
     dryRun: $('dryRun').checked,
     followCompany: $('followCompany').checked,
@@ -236,7 +268,11 @@ $('saveSettings').addEventListener('click', async () => {
   };
   await chrome.storage.local.set({ settings });
   flash('settingsMsg', settings.dryRun ? 'Saved (dry run)' : 'Saved (LIVE: will submit)');
-});
+}
+
+$('saveSettings').addEventListener('click', saveSettings);
+$('settings').addEventListener('change', saveSettings);
+$('settings').addEventListener('input', saveSettings);
 
 // ---------------------------------------------------------------------------
 // Account
@@ -287,7 +323,10 @@ async function loadAll() {
 
   answers = d.answers || {};
   pending = d.pendingQuestions || {};
-  for (const key of Object.keys(pending)) if (answers[key]) delete pending[key];
+  // Questions answered last time (typed, even without clicking Save) move to "Saved answers".
+  const answered = Object.keys(pending).filter((key) => answers[key]);
+  answered.forEach((key) => delete pending[key]);
+  if (answered.length) await chrome.storage.local.set({ pendingQuestions: pending });
   renderAnswers();
 
   const settings = { ...DEFAULT_SETTINGS, ...(d.settings || {}) };
@@ -300,4 +339,7 @@ async function loadAll() {
   renderAccount();
 }
 
-loadAll();
+loadAll().then(() => {
+  const tab = location.hash.slice(1);
+  if (tab && $(tab)) document.querySelector(`nav button[data-tab="${tab}"]`)?.click();
+});

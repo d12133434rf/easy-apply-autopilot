@@ -21,6 +21,9 @@
 const h = React.createElement;
 const { useState } = React;
 window.__submissions = [];
+// ?new=1 renders a layout without LinkedIn's classic classes/data attributes,
+// plus an "Easy Apply" filter pill that must not be mistaken for the apply button.
+const NEW = new URLSearchParams(location.search).has('new');
 
 const JOBS = [
   { id: '101', title: 'Frontend Engineer', company: 'Acme', easy: true },
@@ -107,7 +110,7 @@ function Modal({ job, onClose, onSubmit }) {
     h('div', { key: 2 }, h('input', { type: 'checkbox', id: 'follow-company-checkbox', checked: follow, onChange: e => setFollow(e.target.checked) }), h('label', { htmlFor: 'follow-company-checkbox' }, 'Follow ' + job.company)),
   ];
   const pct = [0, 33, 66, 100][step];
-  return h('div', { className: 'artdeco-modal jobs-easy-apply-modal', role: 'dialog', 'data-test-modal': '' },
+  return h('div', NEW ? { className: 'apply-dialog artdeco-modal', role: 'dialog' } : { className: 'artdeco-modal jobs-easy-apply-modal', role: 'dialog', 'data-test-modal': '' },
     h('div', { className: 'artdeco-modal__header' }, h('h2', null, 'Apply to ' + job.company), h('button', { 'aria-label': 'Dismiss', onClick: onClose }, 'X')),
     h('div', null, pct + '%'),
     ...body,
@@ -124,14 +127,16 @@ function App() {
   const job = JOBS.find(j => j.id === current);
   const open = id => { history.pushState({}, '', '/jobs/search/?currentJobId=' + id); setCurrent(id); };
   return h('div', { className: 'layout' },
-    h('ul', { className: 'scaffold-layout__list' }, JOBS.map(j => h('li', { key: j.id, 'data-occludable-job-id': j.id, onClick: () => open(j.id) },
-      h('a', { className: 'job-card-container__link', href: '#', onClick: e => e.preventDefault() }, j.title),
+    NEW && h('div', { className: 'filters' }, h('button', { className: 'artdeco-pill', 'aria-pressed': 'false', onClick: () => { window.__pillClicked = true; } }, 'Easy Apply')),
+    h('ul', { className: 'scaffold-layout__list' }, JOBS.map(j => h('li', NEW ? { key: j.id, onClick: () => open(j.id) } : { key: j.id, 'data-occludable-job-id': j.id, onClick: () => open(j.id) },
+      h('a', { className: NEW ? 'x1' : 'job-card-container__link', href: NEW ? `/jobs/view/${j.id}/` : '#', onClick: e => e.preventDefault() }, j.title),
       h('div', null, j.company),
       h('div', null, j.applied ? 'Applied 2 days ago' : j.easy ? 'Easy Apply' : 'Promoted')))),
     job && h('div', null,
-      h('h1', { className: 'job-details-jobs-unified-top-card__job-title' }, job.title),
-      h('div', { className: 'job-details-jobs-unified-top-card__company-name' }, job.company),
-      job.easy ? h('button', { className: 'jobs-apply-button', 'aria-label': 'Easy Apply to ' + job.title, onClick: () => setModal(true) }, 'Easy Apply')
+      NEW ? h('div', null, h('a', { href: '/company/' + job.company.toLowerCase() + '/' }, job.company)) : null,
+      h('h1', NEW ? {} : { className: 'job-details-jobs-unified-top-card__job-title' }, job.title),
+      NEW ? null : h('div', { className: 'job-details-jobs-unified-top-card__company-name' }, job.company),
+      job.easy ? h('button', NEW ? { 'aria-label': 'Easy Apply to this job', onClick: () => setModal(true) } : { className: 'jobs-apply-button', 'aria-label': 'Easy Apply to ' + job.title, onClick: () => setModal(true) }, 'Easy Apply')
                : h('button', { className: 'jobs-apply-button', 'aria-label': 'Apply on company website' }, 'Apply')),
     modal && h(Modal, { key: current, job, onClose: () => setConfirm(true),
       onSubmit: data => { window.__submissions.push({ job: job.id, ...data }); setModal(false); setSent(job.company); } }),

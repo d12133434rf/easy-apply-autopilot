@@ -13,17 +13,24 @@
     selectors: {
       modal: '.jobs-easy-apply-modal, div[data-test-modal][role="dialog"]',
       anyDialog: '[role="dialog"], [role="alertdialog"], .artdeco-modal',
-      jobCard: 'li[data-occludable-job-id], div[data-job-id]',
+      // Job cards are found by these first; if none match, by any link to a job
+      // (jobCardLink) and its enclosing <li>.
+      jobCard: 'li[data-occludable-job-id], li[data-job-id], div[data-job-id], [data-view-name="job-card"]',
       jobCardIdAttrs: ['data-occludable-job-id', 'data-job-id'],
-      jobCardLink: 'a.job-card-container__link, a.job-card-list__title, a[href*="/jobs/view/"]',
-      easyApplyButton: 'button.jobs-apply-button, button[aria-label*="Easy Apply"]',
+      jobCardLink: 'a[href*="/jobs/view/"], a[href*="currentJobId="]',
+      // Preferred Easy Apply buttons; otherwise any button/link labelled "Easy Apply"
+      // that isn't a search filter (excludeApplyButton / filtersBar).
+      easyApplyButton: 'button.jobs-apply-button, button[aria-label*="Easy Apply"], a[aria-label*="Easy Apply"]',
+      excludeApplyButton: '[aria-pressed], [aria-checked], [role="radio"], [role="checkbox"], [role="switch"], .artdeco-pill, [aria-label*="filter" i]',
+      filtersBar: '.search-reusables__filters-bar, #search-reusables__filters-bar, [aria-label*="filters" i]',
       jobTitle: '.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, .t-24.t-bold',
       company: '.job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name',
       formElement: '.jobs-easy-apply-form-section__grouping, .jobs-easy-apply-form-element, [data-test-form-element]',
       fieldError: '.artdeco-inline-feedback--error, [data-test-form-element-error-messages]',
       modalDismiss: 'button[aria-label="Dismiss"], button.artdeco-modal__dismiss, button[data-test-modal-close-btn]',
       followCompany: 'input#follow-company-checkbox, input[id*="follow-company"]',
-      nextPage: 'button[aria-label="View next page"], button.jobs-search-pagination__button--next',
+      nextPage: 'button[aria-label="View next page"], button.jobs-search-pagination__button--next, button[aria-label*="next page" i]',
+      currentPage: '[aria-current="true"], [aria-current="page"]',
       typeaheadOption: '[role="listbox"] [role="option"]',
       // A resume LinkedIn already has on file and has selected for this application.
       selectedDocument: '.jobs-document-upload-redesign-card__container--selected, [class*="document"][aria-checked="true"], [class*="document"] input[type="radio"]:checked',
@@ -191,8 +198,11 @@
     ) || null;
   }
 
-  const getModal = () => [...document.querySelectorAll(CONFIG.selectors.modal)].find(isVisible) || null;
   const visibleDialogs = () => [...document.querySelectorAll(CONFIG.selectors.anyDialog)].filter(isVisible);
+  // The Easy Apply modal: known selectors first, else any dialog with apply-flow buttons.
+  const getModal = () => [...document.querySelectorAll(CONFIG.selectors.modal)].find(isVisible)
+    || visibleDialogs().find((d) => findButton(d, CONFIG.buttons.submit) || findButton(d, CONFIG.buttons.next) || findButton(d, CONFIG.buttons.review))
+    || null;
   const dialogMatching = (re) => visibleDialogs().find((d) => re.test(d.innerText)) || null;
   const modalSignature = (m) => clean(m.innerText).slice(0, 3000);
 
@@ -482,8 +492,15 @@
         if (settings.dryRun) return { result: 'dry-run' };
         await sleep(rand(CONFIG.timing.stepDelayMs));
         submit.click();
-        const sent = await waitFor(() => dialogMatching(CONFIG.text.applicationSent), 15000);
-        return { result: sent ? 'submitted' : 'unconfirmed' };
+        const outcome = await waitFor(() => {
+          if (dialogMatching(CONFIG.text.applicationSent)) return 'sent';
+          const m = getModal();
+          if (!m) return 'closed';
+          if (visibleErrors(m).length) return 'errors';
+          return findButton(m, CONFIG.buttons.submit) ? null : 'moved-on';
+        }, 15000);
+        if (outcome === 'errors') return { result: 'needs-answers', questions: erroredQuestions(getModal()) };
+        return { result: outcome ? 'submitted' : 'unconfirmed' };
       }
 
       const btn = findButton(modal, CONFIG.buttons.review) || findButton(modal, CONFIG.buttons.next);
@@ -510,29 +527,50 @@
   // ===========================================================================
   // Job list loop (auto-apply)
   // ===========================================================================
+  const idFromHref = (href) => (href || '').match(/(?:\/jobs\/view\/|currentJobId=)(\d+)/)?.[1] || null;
+
   function cardId(card) {
     for (const attr of CONFIG.selectors.jobCardIdAttrs) {
       const v = card.getAttribute(attr);
       if (v) return v;
     }
-    return null;
-  }
-
-  function nextCard() {
-    for (const card of document.querySelectorAll(CONFIG.selectors.jobCard)) {
-      const id = cardId(card);
-      if (id && !state.seen.has(id)) return { card, id };
+    for (const a of card.querySelectorAll(CONFIG.selectors.jobCardLink)) {
+      const id = idFromHref(a.getAttribute('href'));
+      if (id) return id;
     }
     return null;
   }
 
-  function firstCardId() {
-    const card = document.querySelector(CONFIG.selectors.jobCard);
-    return card ? cardId(card) : null;
+  // All job cards on the page, in order, de-duplicated by job ID.
+  function getCards() {
+    const cards = new Map();
+    const add = (el) => {
+      const id = el && cardId(el);
+      if (id && !cards.has(id)) cards.set(id, el);
+    };
+    document.querySelectorAll(CONFIG.selectors.jobCard).forEach(add);
+    if (!cards.size) {
+      for (const a of document.querySelectorAll(CONFIG.selectors.jobCardLink)) {
+        if (a.closest(CONFIG.selectors.anyDialog)) continue;
+        add(a.closest('li') || a.parentElement?.parentElement);
+      }
+    }
+    return [...cards].map(([id, card]) => ({ id, card }));
+  }
+
+  const nextCard = () => getCards().find((c) => !state.seen.has(c.id)) || null;
+  const firstCardId = () => getCards()[0]?.id || null;
+
+  function nextPageButton() {
+    const direct = [...document.querySelectorAll(CONFIG.selectors.nextPage)].find(isVisible);
+    if (direct) return direct;
+    // Numbered pagination: the button after the current page.
+    const current = [...document.querySelectorAll(CONFIG.selectors.currentPage)].find((el) => /^\s*\d+\s*$/.test(el.innerText));
+    return current?.closest('li')?.nextElementSibling?.querySelector('button') || null;
   }
 
   async function goToNextPage() {
-    const btn = document.querySelector(CONFIG.selectors.nextPage);
+    const btn = nextPageButton();
     if (!btn || btn.disabled) return false;
     const before = firstCardId();
     btn.click();
@@ -540,20 +578,50 @@
   }
 
   function findEasyApplyButton() {
-    return [...document.querySelectorAll(CONFIG.selectors.easyApplyButton)].find(
-      (b) => !b.disabled && isVisible(b) && CONFIG.text.easyApply.test(`${b.getAttribute('aria-label') || ''} ${b.innerText}`)
-    ) || null;
+    const cards = getCards().map((c) => c.card);
+    const ok = (b) => isVisible(b) && !b.disabled && b.getAttribute('aria-disabled') !== 'true'
+      && CONFIG.text.easyApply.test(clean(`${b.getAttribute('aria-label') || ''} ${b.innerText}`))
+      && !b.matches(CONFIG.selectors.excludeApplyButton)
+      && !b.closest(CONFIG.selectors.filtersBar)
+      && !cards.some((c) => c.contains(b));
+    return [...document.querySelectorAll(CONFIG.selectors.easyApplyButton)].find(ok)
+      || [...document.querySelectorAll('button, a')].find((b) => ok(b) && clean(b.innerText).length < 40)
+      || null;
   }
 
+  // Title/company from the job details pane, falling back to the card text.
   function readJob(id, card) {
-    const pick = (sel) => clean(document.querySelector(sel)?.innerText);
-    const cardTitle = clean(card.querySelector(CONFIG.selectors.jobCardLink)?.innerText);
+    const cards = getCards().map((c) => c.card);
+    const titleEl = document.querySelector(CONFIG.selectors.jobTitle)
+      || [...document.querySelectorAll('h1, h2')].find((h) => isVisible(h) && !cards.some((c) => c.contains(h)) && !h.closest(CONFIG.selectors.anyDialog) && clean(h.innerText).length > 2);
+    let company = clean(document.querySelector(CONFIG.selectors.company)?.innerText);
+    for (let node = titleEl; !company && node && node !== document.body; node = node.parentElement) {
+      const link = [...node.querySelectorAll('a[href*="/company/"]')].find((a) => clean(a.innerText));
+      if (link) company = clean(link.innerText);
+    }
+    const cardLines = card ? card.innerText.split('\n').map(clean).filter(Boolean) : [];
+    const title = dedupeText(clean(titleEl?.innerText)) || dedupeText(cardLines[0] || '');
+    company = company || cardLines.slice(1).find((l) => l !== title && !/verification|^viewed|promoted|easy apply/i.test(l)) || '';
     return {
       job_id: id,
-      job_title: dedupeText(pick(CONFIG.selectors.jobTitle) || cardTitle) || 'Unknown title',
-      company: pick(CONFIG.selectors.company) || 'Unknown company',
+      job_title: title || 'Unknown title',
+      company: company || 'Unknown company',
       job_url: `https://www.linkedin.com/jobs/view/${id}/`,
     };
+  }
+
+  // The job currently open in the details pane (for manual applications).
+  function readCurrentJob() {
+    const id = idFromHref(location.href);
+    if (!id) return null;
+    return readJob(id, getCards().find((c) => c.id === id)?.card);
+  }
+
+  async function logApplication(job) {
+    if (!job || state.appliedIds.has(job.job_id)) return;
+    state.appliedIds.add(job.job_id);
+    await incrementTodayCount();
+    await chrome.runtime.sendMessage({ type: 'LOG_APPLICATION', job }).catch(() => {});
   }
 
   async function processCard(card, id) {
@@ -582,9 +650,7 @@
     const { result, questions = [] } = await completeApplication();
 
     if (result === 'submitted') {
-      state.appliedIds.add(id);
-      await incrementTodayCount();
-      await chrome.runtime.sendMessage({ type: 'LOG_APPLICATION', job }).catch(() => {});
+      await logApplication(job);
       await closeConfirmation();
       return 'applied';
     }
@@ -614,6 +680,10 @@
           break;
         }
         const next = nextCard();
+        if (!next && !getCards().length) {
+          setStatus("Couldn't find any job cards on this page. LinkedIn's layout may have changed. Click \"Copy debug info\" and send it over.");
+          break;
+        }
         if (!next) {
           setStatus('Loading next page…');
           if (!(await goToNextPage())) {
@@ -689,14 +759,18 @@
         button.stop { background: #b42318; }
         .s { margin-top: 8px; color: #444; word-wrap: break-word; }
         .c { margin-top: 6px; color: #666; font-size: 12px; }
+        button.link { background: none; color: #0a66c2; width: auto; padding: 0; margin-top: 6px; font-weight: 500; font-size: 12px; }
       </style>
       <div class="p">
         <div class="h"><span>Easy Apply Autopilot</span><span class="badge" id="mode"></span></div>
         <button id="toggle"></button>
         <div class="s" id="status"></div>
         <div class="c" id="counts"></div>
+        <button class="link" id="tracker">Open tracker</button> · <button class="link" id="debug">Copy debug info</button>
       </div>`;
     root.getElementById('toggle').addEventListener('click', () => (state.running ? stopAutopilot() : runAutopilot()));
+    root.getElementById('debug').addEventListener('click', copyDiagnostics);
+    root.getElementById('tracker').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OPEN_TRACKER' }));
     document.body.appendChild(panelHost);
     renderPanel();
   }
@@ -747,7 +821,10 @@
   }
 
   async function manualFill(modal, btn) {
-    if (state.fillBusy) return;
+    if (state.fillBusy) {
+      state.refillQueued = true; // the step changed mid-fill; run again when done
+      return;
+    }
     state.fillBusy = true;
     try {
       state.lastSignature = modalSignature(modal);
@@ -761,8 +838,96 @@
       state.lastSignature = modalSignature(modal);
     } finally {
       state.fillBusy = false;
+      if (state.refillQueued) {
+        state.refillQueued = false;
+        const m = getModal();
+        if (m) setTimeout(() => manualFill(m, m.querySelector('#easy-apply-autopilot-fill')), 0);
+      }
     }
   }
+
+  // ===========================================================================
+  // Diagnostics: page structure (no field values) for fixing selectors
+  // ===========================================================================
+  function describe(el) {
+    if (!el) return 'none';
+    const attrs = [...el.attributes]
+      .filter((a) => /^(data-|role$|aria-label$|aria-pressed$|aria-checked$|aria-current$|href$|type$|name$)/.test(a.name))
+      .map((a) => `${a.name}="${a.value.slice(0, 70)}"`).join(' ');
+    return `<${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${[...el.classList].slice(0, 4).map((c) => '.' + c).join('')} ${attrs}>`;
+  }
+
+  function ancestry(el, depth) {
+    const out = [];
+    for (let i = 0; el && i < depth; i++, el = el.parentElement) out.push(describe(el));
+    return out.join('\n      ← ');
+  }
+
+  function diagnostics() {
+    const lines = [`Easy Apply Autopilot debug · ${new Date().toISOString()}`, `path: ${location.pathname} currentJobId=${idFromHref(location.href)}`];
+    for (const [key, sel] of Object.entries(CONFIG.selectors)) {
+      if (typeof sel !== 'string') continue;
+      try { lines.push(`selector ${key}: ${document.querySelectorAll(sel).length}`); } catch { lines.push(`selector ${key}: INVALID`); }
+    }
+    const cards = getCards();
+    lines.push(`cards found: ${cards.length}`);
+    if (cards[0]) lines.push(`first card text: ${clean(cards[0].card.innerText).slice(0, 150)}`);
+    const links = [...document.querySelectorAll(CONFIG.selectors.jobCardLink)];
+    lines.push(`job links: ${links.length}`);
+    if (links[0]) lines.push(`first job link ancestry:\n      ${ancestry(links[0], 10)}`);
+    const easy = [...document.querySelectorAll('button, a')].filter((b) => isVisible(b) && /easy apply/i.test(`${b.getAttribute('aria-label') || ''} ${b.innerText}`));
+    lines.push(`visible "Easy Apply" elements: ${easy.length}`);
+    easy.slice(0, 6).forEach((b) => lines.push(`  - ${ancestry(b, 3)}`));
+    lines.push(`chosen Easy Apply button: ${describe(findEasyApplyButton())}`);
+    lines.push(`modal detected: ${describe(getModal())}`);
+    visibleDialogs().forEach((d, i) => {
+      lines.push(`dialog ${i}: ${describe(d)}`);
+      [...d.querySelectorAll('button')].slice(0, 10).forEach((b) => lines.push(`    button: ${clean(b.getAttribute('aria-label') || b.innerText).slice(0, 60)}`));
+      [...d.querySelectorAll('input, select, textarea')].slice(0, 20).forEach((e) =>
+        lines.push(`    field: ${e.tagName.toLowerCase()} type=${e.type} id=${e.id} label="${labelFor(e).slice(0, 80)}" ${describe(e.closest(CONFIG.selectors.formElement) || e.parentElement)}`));
+    });
+    lines.push(`status: ${state.status}`);
+    return lines.join('\n');
+  }
+
+  async function copyDiagnostics() {
+    const text = diagnostics();
+    console.log(text);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    setStatus('Debug info copied to clipboard. Paste it to Claude.');
+  }
+
+  // ===========================================================================
+  // Log applications you submit yourself (manual mode)
+  // ===========================================================================
+  function trackManualJob() {
+    const modal = getModal();
+    if (modal && !state.modalWasOpen) state.manualJob = readCurrentJob();
+    state.modalWasOpen = !!modal;
+  }
+
+  document.addEventListener('click', (e) => {
+    if (state.running) return;
+    const btn = e.target.closest?.('button');
+    const modal = getModal();
+    if (!btn || !modal || !modal.contains(btn)) return;
+    if (!CONFIG.buttons.submit.test(clean(`${btn.getAttribute('aria-label') || ''} ${btn.innerText}`))) return;
+    const job = state.manualJob || readCurrentJob();
+    setTimeout(() => {
+      const m = getModal();
+      if (m && (visibleErrors(m).length || findButton(m, CONFIG.buttons.submit))) return; // didn't go through
+      logApplication(job);
+    }, 4000);
+  }, true);
 
   // ===========================================================================
   // Boot: watch the DOM for SPA navigation and the Easy Apply modal
@@ -772,6 +937,7 @@
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       ensurePanel();
+      trackManualJob();
       ensureModalButton();
     }, 300);
   });

@@ -46,9 +46,9 @@ const page = await ctx.newPage();
 page.on('console', (m) => { if (m.type() === 'error') console.log('[page error]', m.text()); });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 
-async function runUntilStopped() {
-  await page.goto('https://www.linkedin.com/jobs/search/');
-  await page.locator('#easy-apply-autopilot-panel button').click({ timeout: 10000 });
+async function runUntilStopped(query = '') {
+  await page.goto('https://www.linkedin.com/jobs/search/' + query);
+  await page.locator('#easy-apply-autopilot-panel #toggle').click({ timeout: 10000 });
   await page.waitForFunction(() => {
     const s = document.querySelector('#easy-apply-autopilot-panel').shadowRoot.getElementById('status').textContent;
     return /Stopped|No more jobs/.test(s);
@@ -60,8 +60,10 @@ async function runUntilStopped() {
   }));
 }
 
-// --- Run 1: job 101 should submit, 102 skip (not Easy Apply), 103 needs an answer, 104 already applied
-let r = await runUntilStopped();
+// --- Run 1 (layout without LinkedIn's classic classes): 101 submits, 102 skipped
+// (not Easy Apply), 103 needs an answer, 104 already applied
+let r = await runUntilStopped('?new=1');
+assert(!(await page.evaluate(() => window.__pillClicked)), 'did not click the "Easy Apply" search filter');
 console.log('run 1:', r.status, '|', r.counts);
 assert(r.subs.length === 1, 'exactly one application submitted in run 1');
 const s = r.subs[0] || {};
@@ -78,7 +80,7 @@ let st = await storage(() => chrome.storage.local.get(['pendingQuestions', 'appl
 const pendingKeys = Object.keys(st.pendingQuestions || {});
 console.log('pending:', pendingKeys);
 assert(pendingKeys.some((k) => k.includes('weekends')), 'unknown weekends question saved for the user');
-assert(st.applications?.length === 1 && st.applications[0].job_title === 'Frontend Engineer' && st.applications[0].company === 'Acme', 'application logged with title/company');
+assert(st.applications?.length === 1 && st.applications[0].job_title === 'Frontend Engineer' && st.applications[0].company === 'Acme', 'application logged with title/company (fallback readers)');
 assert(st.stats?.count === 1, 'daily count incremented');
 assert(await page.locator('.jobs-easy-apply-modal').count() === 0, 'no modal left open');
 
@@ -106,5 +108,36 @@ console.log('button:', await page.locator('#easy-apply-autopilot-fill').textCont
 await page.locator('button[aria-label="Continue to next step"]').click();
 const up = await page.waitForFunction(() => document.querySelector('.jobs-easy-apply-modal')?.innerText.includes('Jane_Doe_Resume.pdf'), null, { timeout: 8000 }).then(() => true, () => false);
 assert(up, 'manual mode fills the next step (resume upload) automatically');
+await page.locator('button[aria-label="Continue to next step"]').click();
+await page.waitForFunction(() => document.getElementById('py')?.value === '5' && document.getElementById('sp')?.value === 'No', null, { timeout: 8000 });
+await page.locator('button[aria-label="Review your application"]').click();
+await page.locator('button[aria-label="Submit application"]').click();
+await page.waitForTimeout(5000);
+st = await storage(() => chrome.storage.local.get('applications'));
+assert(st.applications?.some((a) => a.job_id === '101' && a.job_title === 'Frontend Engineer'), 'manual submission logged to tracker');
+
+// --- Popup: fields save as you type (no Save click), even if the popup closes right away
+const extId = new URL(sw.url()).host;
+const popup = await ctx.newPage();
+await popup.goto(`chrome-extension://${extId}/popup.html`);
+await popup.locator('#city').fill('Austin');
+await storage(() => chrome.storage.local.set({ pendingQuestions: { 'do you have a drivers license': { label: 'Do you have a driver\'s license?', kind: 'radio', options: ['Yes', 'No'] } } }));
+await popup.reload();
+await popup.locator('nav button[data-tab="answers"]').click();
+await popup.locator('#pendingList select').selectOption('Yes');
+await popup.close();
+st = await storage(() => chrome.storage.local.get(['profile', 'answers']));
+assert(st.profile?.city === 'Austin' && st.profile?.first_name === 'Jane', 'profile field autosaved without clicking Save');
+assert(st.answers?.['do you have a drivers license']?.answer === 'Yes', 'pending answer autosaved without clicking Save');
+
+// --- Tracker page lists applications and updates status
+const dash = await ctx.newPage();
+await dash.goto(`chrome-extension://${extId}/dashboard.html`);
+await dash.waitForSelector('#rows tr td a');
+assert(await dash.locator('#rows tr').count() === 1 && (await dash.locator('#statTotal').textContent()) === '1', 'tracker shows the logged application');
+await dash.locator('#rows select').selectOption('interviewing');
+await dash.waitForTimeout(500);
+st = await storage(() => chrome.storage.local.get('applications'));
+assert(st.applications[0].status === 'interviewing', 'tracker status change saved');
 
 await ctx.close();

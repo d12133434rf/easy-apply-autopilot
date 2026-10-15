@@ -6,7 +6,12 @@
   <style>
     * { box-sizing: border-box; }
     body { width: 400px; margin: 0; font: 13px/1.4 -apple-system, system-ui, sans-serif; color: #1d1d1f; background: #fff; }
-    header { padding: 12px 14px 0; font-weight: 700; font-size: 15px; }
+    header { padding: 12px 14px 0; font-weight: 700; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+    header .links { display: flex; gap: 10px; }
+    button.link { border: 0; background: none; color: #0a66c2; font-weight: 600; cursor: pointer; padding: 0; font-size: 12px; }
+    body.tab { width: auto; max-width: 640px; margin: 24px auto; border: 1px solid #e3e3e8; border-radius: 10px; }
+    body.tab section { max-height: none; }
+    body.tab #openFull { display: none; }
     nav { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid #e3e3e8; }
     nav button { flex: 1; border: 0; background: none; padding: 8px 4px; cursor: pointer; font-weight: 600; color: #666; border-bottom: 2px solid transparent; }
     nav button.active { color: #0a66c2; border-bottom-color: #0a66c2; }
@@ -36,7 +41,13 @@
   </style>
 </head>
 <body>
-  <header>Easy Apply Autopilot</header>
+  <header>
+    <span>Easy Apply Autopilot</span>
+    <span class="links">
+      <button class="link" id="openTracker" type="button">Tracker ↗</button>
+      <button class="link" id="openFull" type="button">Full page ↗</button>
+    </span>
+  </header>
   <nav>
     <button data-tab="profile" class="active">Profile</button>
     <button data-tab="answers">Answers<span class="count" id="pendingCount" hidden></span></button>
@@ -84,7 +95,7 @@
     <label>Cover letter<textarea id="cover_letter" rows="4"></textarea></label>
 
     <h3>Documents</h3>
-    <p class="hint">Uploaded when a job asks for them. PDF, DOC or DOCX, up to 2 MB (LinkedIn's limit). Stored only in this browser.</p>
+    <p class="hint">Uploaded when a job asks for them. PDF, DOC or DOCX, up to 2 MB (LinkedIn's limit). Stored only in this browser. Choosing a file opens this page in a full tab.</p>
     <div class="doc" data-doc="resume">
       <label>Resume<input type="file" accept=".pdf,.doc,.docx"></label>
       <div class="docinfo"></div>
@@ -103,7 +114,7 @@
 
   <!-- ANSWERS -->
   <section id="answers">
-    <p class="hint">Questions the autopilot couldn't answer show up here. Answer once and it's reused on every future application. Jobs with unanswered required questions are skipped, not guessed.</p>
+    <p class="hint">Questions the autopilot couldn't answer show up here. Answers save as you type and are reused on every future application. Jobs with unanswered required questions are skipped, not guessed.</p>
     <h3>Needs your answer</h3>
     <div id="pendingList"></div>
     <h3>Saved answers</h3>

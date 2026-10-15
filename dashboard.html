@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Application Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 -apple-system, system-ui, sans-serif; color: #1d1d1f; background: #f4f5f7; }
+    main { max-width: 1040px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #666; margin: 0 0 20px; }
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat { background: #fff; border: 1px solid #e3e3e8; border-radius: 10px; padding: 12px 14px; }
+    .stat b { display: block; font-size: 22px; }
+    .stat span { color: #666; font-size: 12px; }
+    .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .toolbar input, .toolbar select { padding: 8px 10px; border: 1px solid #c8c8cf; border-radius: 6px; font: inherit; background: #fff; }
+    .toolbar input { flex: 1; min-width: 200px; }
+    .btn { padding: 8px 14px; border: 0; border-radius: 6px; background: #0a66c2; color: #fff; font-weight: 600; cursor: pointer; font: inherit; font-weight: 600; }
+    .btn.secondary { background: #fff; color: #0a66c2; border: 1px solid #c8d6e5; }
+    .banner { background: #eef3f8; border: 1px solid #c8d6e5; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #888; background: #fafafa; }
+    tr:last-child td { border-bottom: 0; }
+    td a { color: #0a66c2; text-decoration: none; font-weight: 600; }
+    td a:hover { text-decoration: underline; }
+    td select { padding: 4px 6px; border-radius: 6px; border: 1px solid #c8c8cf; font: inherit; }
+    .del { border: 0; background: none; color: #b42318; cursor: pointer; font-size: 16px; }
+    .empty { text-align: center; color: #777; padding: 40px; }
+    .muted { color: #888; font-size: 12px; }
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      th:nth-child(1), td:nth-child(1) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Application Tracker</h1>
+    <p class="sub">Every application submitted through Easy Apply Autopilot, both auto-applied and manual ⚡ Autofill.</p>
+
+    <div class="stats">
+      <div class="stat"><b id="statTotal">0</b><span>Total applied</span></div>
+      <div class="stat"><b id="statToday">0</b><span>Today</span></div>
+      <div class="stat"><b id="statWeek">0</b><span>Last 7 days</span></div>
+      <div class="stat"><b id="statInterview">0</b><span>Interviewing</span></div>
+      <div class="stat"><b id="statOffer">0</b><span>Offers</span></div>
+    </div>
+
+    <div class="banner" id="upgrade" hidden>
+      <span id="upgradeText"></span>
+      <!-- TODO(stripe): open Stripe Checkout for Pro ($9/mo) -->
+      <button class="btn" id="upgradeBtn" type="button">Upgrade to Pro</button>
+    </div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search title or company">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="applied">Applied</option>
+        <option value="interviewing">Interviewing</option>
+        <option value="offer">Offer</option>
+        <option value="rejected">Rejected</option>
+        <option value="withdrawn">Withdrawn</option>
+      </select>
+      <button class="btn secondary" id="exportCsv" type="button">Export CSV</button>
+    </div>
+
+    <table>
+      <thead><tr><th>Date</th><th>Job</th><th>Company</th><th>Status</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  <script src="dashboard.js"></script>
+</body>
+</html>

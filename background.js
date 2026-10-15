@@ -121,8 +121,23 @@ async function pullFromServer() {
   const profile = {};
   for (const col of PROFILE_COLUMNS) profile[col] = row[col] ?? '';
   const answers = { ...(local.answers || {}), ...(row.answer_bank || {}) };
-  await chrome.storage.local.set({ profile, answers });
+  pulling = true;
+  try {
+    await chrome.storage.local.set({ profile, answers });
+  } finally {
+    setTimeout(() => (pulling = false), 100);
+  }
 }
+
+// The popup writes profile/answers straight to storage (so nothing is lost when
+// it closes); push those changes to Supabase shortly after.
+let pulling = false;
+let pushTimer = null;
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || pulling || !(changes.profile || changes.answers)) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => pushProfile().catch((e) => console.warn('Profile sync failed', e)), 1500);
+});
 
 async function syncPendingApplications() {
   const session = await getSession();
@@ -211,6 +226,35 @@ const handlers = {
   async SAVE_ANSWERS({ answers }) {
     await chrome.storage.local.set({ answers });
     await pushProfile().catch((e) => console.warn('Answer sync failed', e));
+    return {};
+  },
+
+  async OPEN_TRACKER() {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    return {};
+  },
+
+  async UPDATE_APPLICATION({ job_id, status }) {
+    const { applications = [] } = await chrome.storage.local.get('applications');
+    const app = applications.find((a) => a.job_id === job_id);
+    if (!app) return {};
+    app.status = status;
+    await chrome.storage.local.set({ applications });
+    if (app.synced && (await getSession())) {
+      await rest(`applications?job_id=eq.${encodeURIComponent(job_id)}`, { method: 'PATCH', body: { status }, prefer: 'return=minimal' })
+        .catch((e) => console.warn('Status sync failed', e));
+    }
+    return {};
+  },
+
+  async DELETE_APPLICATION({ job_id }) {
+    const { applications = [] } = await chrome.storage.local.get('applications');
+    const app = applications.find((a) => a.job_id === job_id);
+    await chrome.storage.local.set({ applications: applications.filter((a) => a.job_id !== job_id) });
+    if (app?.synced && (await getSession())) {
+      await rest(`applications?job_id=eq.${encodeURIComponent(job_id)}`, { method: 'DELETE', prefer: 'return=minimal' })
+        .catch((e) => console.warn('Delete sync failed', e));
+    }
     return {};
   },
 
