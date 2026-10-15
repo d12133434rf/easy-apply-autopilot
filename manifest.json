@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Easy Apply Autopilot",
+  "version": "0.1.0",
+  "description": "Autofills and (optionally) auto-submits LinkedIn Easy Apply applications from your saved profile.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://*.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Easy Apply Autopilot",
+    "default_popup": "popup.html"
+  }
+}

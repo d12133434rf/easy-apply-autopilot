@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Easy Apply Autopilot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { width: 400px; margin: 0; font: 13px/1.4 -apple-system, system-ui, sans-serif; color: #1d1d1f; background: #fff; }
+    header { padding: 12px 14px 0; font-weight: 700; font-size: 15px; }
+    nav { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid #e3e3e8; }
+    nav button { flex: 1; border: 0; background: none; padding: 8px 4px; cursor: pointer; font-weight: 600; color: #666; border-bottom: 2px solid transparent; }
+    nav button.active { color: #0a66c2; border-bottom-color: #0a66c2; }
+    nav .count { background: #b42318; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 11px; margin-left: 3px; }
+    section { display: none; padding: 12px 14px 14px; max-height: 520px; overflow-y: auto; }
+    section.active { display: block; }
+    label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 12px; color: #444; }
+    input, select, textarea { display: block; width: 100%; margin-top: 3px; padding: 6px 8px; border: 1px solid #c8c8cf; border-radius: 6px; font: inherit; font-weight: 400; color: inherit; }
+    textarea { resize: vertical; min-height: 60px; }
+    input[type=checkbox] { display: inline; width: auto; margin: 0 6px 0 0; }
+    .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+    h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #888; margin: 14px 0 8px; }
+    h3:first-child { margin-top: 0; }
+    .btn { padding: 8px 12px; border: 0; border-radius: 6px; background: #0a66c2; color: #fff; font-weight: 600; cursor: pointer; }
+    .btn.secondary { background: #eef3f8; color: #0a66c2; }
+    .btn.danger { background: none; color: #b42318; padding: 4px 6px; }
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; position: sticky; bottom: -14px; background: #fff; padding: 8px 0; }
+    .msg { color: #067647; font-size: 12px; } .msg.err { color: #b42318; }
+    .hint { color: #777; font-size: 12px; font-weight: 400; margin: 0 0 10px; }
+    .card { border: 1px solid #e3e3e8; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+    .card .q { font-weight: 600; margin-bottom: 4px; }
+    .card .meta { color: #888; font-size: 11px; margin-bottom: 4px; }
+    .card .line { display: flex; gap: 6px; align-items: center; } .card .line input, .card .line select { margin: 0; }
+    .wh { border: 1px solid #e3e3e8; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+    .warn { background: #fff4d6; color: #7a5600; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <header>Easy Apply Autopilot</header>
+  <nav>
+    <button data-tab="profile" class="active">Profile</button>
+    <button data-tab="answers">Answers<span class="count" id="pendingCount" hidden></span></button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="account">Account</button>
+  </nav>
+
+  <!-- PROFILE -->
+  <section id="profile" class="active">
+    <h3>Contact</h3>
+    <div class="row">
+      <label>First name<input id="first_name"></label>
+      <label>Last name<input id="last_name"></label>
+    </div>
+    <label>Email<input id="email" type="email"></label>
+    <div class="row">
+      <label>Phone country<input id="phone_country" placeholder="United States (+1)"></label>
+      <label>Phone<input id="phone" type="tel"></label>
+    </div>
+    <label>Street address<input id="address"></label>
+    <div class="row">
+      <label>City<input id="city"></label>
+      <label>State<input id="state"></label>
+      <label>ZIP<input id="zip"></label>
+    </div>
+    <label>LinkedIn URL<input id="linkedin_url" type="url"></label>
+    <label>Website / portfolio<input id="website" type="url"></label>
+
+    <h3>Screening answers</h3>
+    <div class="row">
+      <label>Authorized to work?<select id="work_authorized"><option value=""></option><option>Yes</option><option>No</option></select></label>
+      <label>Need sponsorship?<select id="requires_sponsorship"><option value=""></option><option>Yes</option><option>No</option></select></label>
+    </div>
+    <div class="row">
+      <label>Total years of experience<input id="years_experience" type="number" min="0"></label>
+      <label>Desired salary<input id="desired_salary" placeholder="120000"></label>
+    </div>
+    <div class="row">
+      <label>Highest education<input id="education" placeholder="Bachelor's Degree"></label>
+      <label>Notice period<input id="notice_period" placeholder="2 weeks"></label>
+    </div>
+    <label>Skills (one per line, "Skill: years")
+      <textarea id="skills" placeholder="Python: 5&#10;React: 3&#10;SQL: 4"></textarea>
+    </label>
+    <label>Cover letter<textarea id="cover_letter" rows="4"></textarea></label>
+
+    <h3>Work history</h3>
+    <div id="workHistory"></div>
+    <button class="btn secondary" id="addJob" type="button">+ Add position</button>
+
+    <div class="actions"><button class="btn" id="saveProfile">Save profile</button><span class="msg" id="profileMsg"></span></div>
+  </section>
+
+  <!-- ANSWERS -->
+  <section id="answers">
+    <p class="hint">Questions the autopilot couldn't answer show up here. Answer once and it's reused on every future application. Jobs with unanswered required questions are skipped, not guessed.</p>
+    <h3>Needs your answer</h3>
+    <div id="pendingList"></div>
+    <h3>Saved answers</h3>
+    <div id="answerList"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings">
+    <div class="warn">Auto-submitting applications is against LinkedIn's User Agreement and can get your account restricted. Keep dry run on until you've checked how it answers questions.</div>
+    <label><input type="checkbox" id="dryRun">Dry run (fill every step but never submit)</label>
+    <label><input type="checkbox" id="followCompany">Follow companies I apply to</label>
+    <div class="row">
+      <label>Daily application cap<input id="dailyCap" type="number" min="1" max="100"></label>
+      <label>Seconds between jobs<input id="delaySeconds" type="number" min="5"></label>
+    </div>
+    <label>Default years for skills not in my profile
+      <input id="defaultSkillYears" type="number" min="0" placeholder="Leave blank to be asked">
+    </label>
+    <div class="actions"><button class="btn" id="saveSettings">Save settings</button><span class="msg" id="settingsMsg"></span></div>
+  </section>
+
+  <!-- ACCOUNT -->
+  <section id="account">
+    <div id="notConfigured" class="hint" hidden>Supabase isn't configured (see background.js). Running in local-only mode: everything is stored in this browser.</div>
+    <div id="signedOut" hidden>
+      <label>Email<input id="authEmail" type="email"></label>
+      <label>Password<input id="authPassword" type="password"></label>
+      <div class="actions" style="position:static">
+        <button class="btn" id="signIn">Sign in</button>
+        <button class="btn secondary" id="signUp">Create account</button>
+      </div>
+    </div>
+    <div id="signedIn" hidden>
+      <p>Signed in as <b id="userEmail"></b></p>
+      <p>Plan: <b id="plan"></b></p>
+      <div class="actions" style="position:static">
+        <button class="btn secondary" id="syncNow">Sync now</button>
+        <button class="btn danger" id="signOut">Sign out</button>
+      </div>
+    </div>
+    <h3>Tracker</h3>
+    <p id="trackerInfo"></p>
+    <!-- TODO(stripe): "Upgrade to Pro ($9/mo)" button → Stripe Checkout -->
+    <span class="msg" id="accountMsg"></span>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

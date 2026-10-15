@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Mock LinkedIn Jobs</title>
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  .layout { display: flex; gap: 20px; padding: 20px; }
+  ul { list-style: none; padding: 0; width: 300px; }
+  li { border: 1px solid #ccc; padding: 10px; margin-bottom: 8px; cursor: pointer; }
+  .artdeco-modal { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); width: 500px; background: #fff; border: 2px solid #333; padding: 16px; z-index: 10; }
+  .confirm { z-index: 20; top: 200px; }
+  .artdeco-inline-feedback--error { color: red; }
+  .visually-hidden { position: absolute; clip: rect(0 0 0 0); width: 1px; height: 1px; overflow: hidden; }
+  .jobs-easy-apply-form-element { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="/mock/react.js"></script>
+<script src="/mock/react-dom.js"></script>
+<script>
+const h = React.createElement;
+const { useState } = React;
+window.__submissions = [];
+
+const JOBS = [
+  { id: '101', title: 'Frontend Engineer', company: 'Acme', easy: true },
+  { id: '102', title: 'Data Analyst', company: 'Globex', easy: false },
+  { id: '103', title: 'Backend Engineer', company: 'Initech', easy: true, extra: true },
+  { id: '104', title: 'Designer', company: 'Umbrella', easy: true, applied: true },
+];
+
+// LinkedIn-style label: visible copy + screen-reader copy.
+const Lbl = (props, text) => h('label', props, h('span', { 'aria-hidden': 'true' }, text), h('span', { className: 'visually-hidden' }, text));
+
+function TextField({ id, label, value, onChange, error }) {
+  return h('div', { className: 'jobs-easy-apply-form-element' },
+    Lbl({ htmlFor: id }, label),
+    h('input', { id, type: 'text', required: true, value, onChange: e => onChange(e.target.value) }),
+    error && h('div', { className: 'artdeco-inline-feedback--error' }, 'Please enter a valid answer'));
+}
+function SelectField({ id, label, value, onChange, options, error }) {
+  return h('div', { className: 'jobs-easy-apply-form-element' },
+    Lbl({ htmlFor: id }, label),
+    h('select', { id, required: true, value, onChange: e => onChange(e.target.value) },
+      h('option', { value: '' }, 'Select an option'),
+      options.map(o => h('option', { key: o, value: o }, o))),
+    error && h('div', { className: 'artdeco-inline-feedback--error' }, 'Please make a selection'));
+}
+function RadioField({ id, label, value, onChange, options, error }) {
+  return h('fieldset', { className: 'jobs-easy-apply-form-element', 'aria-required': 'true' },
+    h('legend', null, h('span', { 'aria-hidden': 'true' }, label), h('span', { className: 'visually-hidden' }, label)),
+    options.map(o => h('div', { key: o },
+      h('input', { type: 'radio', id: id + o, name: id, value: o, checked: value === o, onChange: () => onChange(o) }),
+      h('label', { htmlFor: id + o }, o))),
+    error && h('div', { className: 'artdeco-inline-feedback--error' }, 'Please make a selection'));
+}
+
+const STEPS = (job) => [
+  ['firstName', 'lastName', 'email', 'phoneCountry', 'phone'],
+  ['python', 'authorized', 'sponsorship', ...(job.extra ? ['weekends'] : [])],
+  [],
+];
+
+function Modal({ job, onClose, onSubmit }) {
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ firstName: '', lastName: '', email: '', phoneCountry: '', phone: '', python: '', authorized: '', sponsorship: '', weekends: '' });
+  const [follow, setFollow] = useState(true);
+  const [errors, setErrors] = useState({});
+  const set = k => val => setV(s => ({ ...s, [k]: val }));
+  const steps = STEPS(job);
+  const validateAndGo = () => {
+    const errs = {};
+    for (const k of steps[step]) if (!v[k]) errs[k] = true;
+    setErrors(errs);
+    if (!Object.keys(errs).length) setStep(step + 1);
+  };
+  const f = (k, el) => el;
+  let body;
+  if (step === 0) body = [
+    h(TextField, { key: 1, id: 'fn', label: 'First name', value: v.firstName, onChange: set('firstName'), error: errors.firstName }),
+    h(TextField, { key: 2, id: 'ln', label: 'Last name', value: v.lastName, onChange: set('lastName'), error: errors.lastName }),
+    h(SelectField, { key: 3, id: 'em', label: 'Email address', value: v.email, onChange: set('email'), options: ['jane@example.com'], error: errors.email }),
+    h(SelectField, { key: 4, id: 'cc', label: 'Phone country code', value: v.phoneCountry, onChange: set('phoneCountry'), options: ['Canada (+1)', 'United States (+1)'], error: errors.phoneCountry }),
+    h(TextField, { key: 5, id: 'ph', label: 'Mobile phone number', value: v.phone, onChange: set('phone'), error: errors.phone }),
+  ];
+  else if (step === 1) body = [
+    h(TextField, { key: 1, id: 'py', label: 'How many years of work experience do you have with Python?', value: v.python, onChange: set('python'), error: errors.python }),
+    h(RadioField, { key: 2, id: 'auth', label: 'Are you legally authorized to work in the United States?', value: v.authorized, onChange: set('authorized'), options: ['Yes', 'No'], error: errors.authorized }),
+    h(SelectField, { key: 3, id: 'sp', label: 'Will you now or in the future require sponsorship for employment visa status?', value: v.sponsorship, onChange: set('sponsorship'), options: ['Yes', 'No'], error: errors.sponsorship }),
+    job.extra && h(RadioField, { key: 4, id: 'wk', label: 'Are you willing to work weekends?', value: v.weekends, onChange: set('weekends'), options: ['Yes', 'No'], error: errors.weekends }),
+  ];
+  else body = [
+    h('p', { key: 1 }, 'Review your application'),
+    h('div', { key: 2 }, h('input', { type: 'checkbox', id: 'follow-company-checkbox', checked: follow, onChange: e => setFollow(e.target.checked) }), h('label', { htmlFor: 'follow-company-checkbox' }, 'Follow ' + job.company)),
+  ];
+  const pct = [0, 50, 100][step];
+  return h('div', { className: 'artdeco-modal jobs-easy-apply-modal', role: 'dialog', 'data-test-modal': '' },
+    h('div', { className: 'artdeco-modal__header' }, h('h2', null, 'Apply to ' + job.company), h('button', { 'aria-label': 'Dismiss', onClick: onClose }, 'X')),
+    h('div', null, pct + '%'),
+    ...body,
+    step < 2
+      ? h('button', { 'aria-label': step === 1 ? 'Review your application' : 'Continue to next step', onClick: validateAndGo }, step === 1 ? 'Review' : 'Next')
+      : h('button', { 'aria-label': 'Submit application', onClick: () => onSubmit({ ...v, follow }) }, 'Submit application'));
+}
+
+function App() {
+  const [current, setCurrent] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [sent, setSent] = useState(null);
+  const job = JOBS.find(j => j.id === current);
+  const open = id => { history.pushState({}, '', '/jobs/search/?currentJobId=' + id); setCurrent(id); };
+  return h('div', { className: 'layout' },
+    h('ul', { className: 'scaffold-layout__list' }, JOBS.map(j => h('li', { key: j.id, 'data-occludable-job-id': j.id, onClick: () => open(j.id) },
+      h('a', { className: 'job-card-container__link', href: '#', onClick: e => e.preventDefault() }, j.title),
+      h('div', null, j.company),
+      h('div', null, j.applied ? 'Applied 2 days ago' : j.easy ? 'Easy Apply' : 'Promoted')))),
+    job && h('div', null,
+      h('h1', { className: 'job-details-jobs-unified-top-card__job-title' }, job.title),
+      h('div', { className: 'job-details-jobs-unified-top-card__company-name' }, job.company),
+      job.easy ? h('button', { className: 'jobs-apply-button', 'aria-label': 'Easy Apply to ' + job.title, onClick: () => setModal(true) }, 'Easy Apply')
+               : h('button', { className: 'jobs-apply-button', 'aria-label': 'Apply on company website' }, 'Apply')),
+    modal && h(Modal, { key: current, job, onClose: () => setConfirm(true),
+      onSubmit: data => { window.__submissions.push({ job: job.id, ...data }); setModal(false); setSent(job.company); } }),
+    confirm && h('div', { className: 'artdeco-modal confirm', role: 'alertdialog' }, h('p', null, 'Save this application?'),
+      h('button', { onClick: () => { setConfirm(false); setModal(false); } }, 'Discard'), h('button', null, 'Save')),
+    sent && h('div', { className: 'artdeco-modal', role: 'dialog' }, h('p', null, 'Your application was sent to ' + sent),
+      h('button', { 'aria-label': 'Dismiss', onClick: () => setSent(null) }, 'Done')));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
